@@ -49,8 +49,11 @@ def main():
     time = np.arange(-50, 50, 0.1)
     gauss_pulse = normalized_gaussian(time, cen=0, sigma=1)
     
-    convolution_matrix = gaussian_matrix(time, time, 1)
+    # convolution_matrix = gaussian_matrix(time, time, 1)
+    # convolution_matrix = circulant(gauss_pulse)
     convolution_matrix = np.roll(circulant(gauss_pulse), gauss_pulse.shape[0] // 2)
+    plt.imshow(convolution_matrix)
+    plt.show()
 
     plt.plot(time, step_func(time, 0))
     compare_convolution(time, gauss_pulse, step_func(time, 0), convolution_matrix, np.convolve)

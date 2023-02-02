@@ -27,19 +27,22 @@ def gaussian(x, amp, cen, sigma, bkg):
     return (bkg + amp * np.exp(-(x-cen)**2 / (2*sigma**2)))
 
 
-def normalized_gaussian(x, cen, sigma, bkg=0):
+def trapz_normalized_gaussian(x, cen, sigma, bkg=0):
     return (0.3989 / (sigma)) * gaussian(x, 1, cen=cen, sigma=sigma, bkg=bkg)
+
+def normalized_gaussian(x, cen, sigma, bkg=0):
+    g = gaussian(x, 1, cen=cen, sigma=sigma, bkg=bkg)
+    return g / g.sum()
 
 
 def main():
     
     time = np.arange(-5, 15, 0.01)
-    dt = time[1] - time[0]
     
     IRF = normalized_gaussian(time, cen=0, sigma=1, bkg=0) # instrument response function
     inst_signal = step_func(time, 5)
     
-    exp_signal = np.convolve(inst_signal, IRF) * dt
+    exp_signal = np.convolve(inst_signal, IRF)
     # exp_scaled = exp_signal / exp_signal.max()
     
     fig, ax = plt.subplots(1, 2)
