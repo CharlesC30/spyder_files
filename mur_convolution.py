@@ -111,29 +111,31 @@ def compute_conv_sigma(energy, mu, mu_ref):
 sigma, _ = compute_conv_sigma(new_grid, interp_spectrum2, interp_spectrum1)
 #%%
 
-def conv_spectrum(energy_in, energy_out, mu, sigma):
+def conv_spectrum(energy_in, energy_out, mu_in, sigma):
     conv_matrix = gaussian_matrix(energy_in, energy_out, sigma=sigma)
-    return conv_matrix @ mu
+    return conv_matrix @ mu_in
 
 
 def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333, de=50):
     
     cs = CubicSpline(energy_ref, mu_ref)
-    fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), 0.05)
+    fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), 0.0005)
     fine_grid_mu_ref = cs(fine_grid_energy_ref)
     
-    mask = (energy > (e0 - de / 2)) & (energy < (e0 + de / 2))
-    energy_roi = energy[mask]
-    mu_roi = mu[mask]
+    roi_mask = (energy > (e0 - de / 2)) & (energy < (e0 + de / 2))
+    energy_roi = energy[roi_mask]
+    mu_roi = mu[roi_mask]
     
     energy_roi_norm = (energy_roi - energy_roi.min()) / (energy_roi.max() - energy_roi.min())
     
     def get_mu_fit(pars):
         shift = pars.valuesdict()['shift']
         sigma = pars.valuesdict()['sigma']
+        # print(sigma)
         mu_ref_conv = conv_spectrum(
             fine_grid_energy_ref - shift, energy_roi, fine_grid_mu_ref, sigma=sigma
             )
+        # plt.plot(energy_roi, mu_ref_conv, c='r', ls='dashed')
         
         basis = np.vstack(
             (mu_ref_conv, np.ones(energy_roi.shape), energy_roi_norm, energy_roi_norm**2)
@@ -145,23 +147,48 @@ def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333
         return get_mu_fit(pars) - mu_roi
     
     pars = Parameters()
-    pars.add("sigma", value=0.001)
+    pars.add("sigma", value=0.001, min=0)
     pars.add("shift", value=0.1)
     out = minimize(residuals, pars)
     sigma = out.params["sigma"].value
     shift = out.params["shift"].value
+    print(out.message)
     return shift, sigma, energy_roi, get_mu_fit(pars)
     
 shift, sigma, energy_fit, mu_fit = compute_energy_offset_and_broadening(df2.energy, df2.mur, df1.energy, df1.mur)
 plt.xlim(energy_fit.min(), energy_fit.max())
-# plt.plot(df1.energy, df1.mur)
-plt.plot(df2.energy, df2.mur)
-plt.plot(energy_fit, mu_fit)
+plt.plot(df1.energy, df1.mur, label="mu_ref")
+plt.plot(df2.energy, df2.mur, label="mu_target")
+plt.plot(energy_fit, mu_fit, label="mu_fit")
+plt.legend()
 plt.show()
 
+#%%
+# e0=8333 
+# de=50
 
+# energy = df2.energy
+# mu = df2.mur
+# energy_ref = df1.energy
+# mu_ref = df1.mur
 
+# cs = CubicSpline(energy_ref, mu_ref)
+# fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), 0.05)
+# fine_grid_mu_ref = cs(fine_grid_energy_ref)
 
+# roi_mask = (energy > (e0 - de / 2)) & (energy < (e0 + de / 2))
+# energy_roi = energy[roi_mask]
+# mu_roi = mu[roi_mask]
+
+# shift=5
+# sigma=2
+# mu_ref_conv = conv_spectrum(
+#             fine_grid_energy_ref - shift, energy_roi, fine_grid_mu_ref, sigma=sigma
+#             )
+# plt.xlim(energy_roi.min(), energy_roi.max())
+# plt.plot(energy_ref, mu_ref)
+# # plt.plot(energy_roi, mu_roi)
+# plt.plot(energy_roi, mu_ref_conv)
 
 
 
