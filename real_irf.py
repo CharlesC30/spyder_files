@@ -13,8 +13,15 @@ import pandas as pd
 from scipy.linalg import toeplitz
 from scipy.interpolate import CubicSpline
 import pickle
+
+def gaussian_matrix(t_in, t_out, sigma):
+    # sigma = fwhm / 2.355
+    ksi = (t_in[None, :] - t_out[:, None]) / sigma
+    bla = np.exp( -0.5 * ksi**2)
+    bla = bla / np.sum(bla, axis=1)[:, None] # !!!!!!!!!!!!!!!!!!!
+    return bla
 #%%
-# load energy grids
+# load the data
 with open("/home/charles/Desktop/test_data/test_data_2023_01_27.pkl", "rb") as f:
     test_data = pickle.load(f)
     
@@ -33,7 +40,7 @@ df1 = get_df_with_mus(5000)
 df2 = get_df_with_mus(-1)
 
 e0=8333 
-de=50
+de=100
 
 energy = df2.energy
 mu = df2.mur
@@ -41,7 +48,7 @@ energy_ref = df1.energy
 mu_ref = df1.mur
 
 cs = CubicSpline(energy_ref, mu_ref)
-fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), 0.005)
+fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), 0.05)
 fine_grid_mu_ref = cs(fine_grid_energy_ref)
 
 roi_mask = (energy > (e0 - de / 2)) & (energy < (e0 + de / 2))
@@ -52,10 +59,9 @@ dw_si111 = xraydb.darwin_width(10000, 'Si', (1, 1, 1))
 
 fig, ax = plt.subplots(constrained_layout=True)
 
-norm_real_irf = dw_si111.intensity**2 / np.sum(dw_si111.intensity**2)
-ax.plot(dw_si111.denergy, norm_real_irf)
-
-# irf_cs = CubicSpline(dw_si111.denergy[::-1], norm_real_irf[::-1], bc_type='periodic')
+irf = dw_si111.intensity**2
+# norm_irf = irf / irf.sum()
+ax.plot(dw_si111.denergy, irf)
 
 t_in = fine_grid_energy_ref
 t_out = energy_roi
@@ -63,22 +69,35 @@ first_row_grid = t_in - t_out[0]
 
 dw_energy = dw_si111.denergy[::-1]
 # new_grid = np.arange(dw_energy.min() - 50, dw_energy.max() + 50, 0.005)
-first_row = np.interp(first_row_grid, dw_si111.denergy[::-1], norm_real_irf[::-1])
-plt.plot(first_row_grid, first_row)
+first_row = np.interp(
+    first_row_grid, dw_si111.denergy[::-1], irf[::-1], left=0, right=0
+    )
+plt.plot(first_row_grid, first_row, "r*")
+plt.show()
+#%%
+irf_conv_matrix = toeplitz(c=first_row, r=np.zeros(len(energy_roi))).transpose()
+irf_conv_matrix /= np.sum(irf_conv_matrix, axis=1)[:, None] # normalize rows
+plt.imshow(irf_conv_matrix)
+plt.show()
+#%%
+# what does irf convolution look like?
+conv_res = irf_conv_matrix @ fine_grid_mu_ref
+plt.plot(fine_grid_energy_ref, fine_grid_mu_ref)
+plt.plot(energy_roi, conv_res)
+plt.show()
+plt.clf()
 
+gauss_conv_matrix = gaussian_matrix(fine_grid_energy_ref, energy_roi, 1)
+conv_res1 = gauss_conv_matrix @ fine_grid_mu_ref 
+plt.plot(fine_grid_energy_ref, fine_grid_mu_ref)
+plt.plot(energy_roi, conv_res1)
+plt.show()
+plt.clf()
 
+plt.plot(irf_conv_matrix[5])
+plt.plot(gauss_conv_matrix[5])
+plt.show()
 
-
-# plt.plot(first_row)
-
-# conv_matrix = toeplitz(norm_real_irf, r=np.zeros(100)).transpose()
-# plt.imshow(conv_matrix)
-
-
-
-
-
-
-
-
-
+fig, (ax1, ax2) = plt.subplots(2, 1)
+ax1.imshow(irf_conv_matrix)
+ax2.imshow(gauss_conv_matrix)
