@@ -62,7 +62,8 @@ fig, ax = plt.subplots(constrained_layout=True)
 irf = dw_si111.intensity**2
 # norm_irf = irf / irf.sum()
 ax.plot(dw_si111.denergy, irf)
-
+plt.show()
+#%%
 t_in = fine_grid_energy_ref
 t_out = energy_roi
 first_row_grid = t_in - t_out[0]
@@ -72,28 +73,35 @@ dw_energy = dw_si111.denergy[::-1]
 first_row = np.interp(
     first_row_grid, dw_si111.denergy[::-1], irf[::-1], left=0, right=0
     )
+
+plt.plot(dw_si111.denergy, irf)
 plt.plot(first_row_grid, first_row, "r*")
 plt.show()
 #%%
-irf_conv_matrix = toeplitz(c=first_row, r=np.zeros(len(energy_roi))).transpose()
-irf_conv_matrix /= np.sum(irf_conv_matrix, axis=1)[:, None] # normalize rows
+irf_conv_matrix = first_row
+for _t in t_out[1:]:
+    row_grid = t_in - _t
+    row = np.interp(row_grid, dw_si111.denergy[::-1], irf[::-1], left=0, right=0)
+    irf_conv_matrix = np.vstack((irf_conv_matrix, row))
+
+# normalize rows
+irf_conv_matrix /= np.sum(irf_conv_matrix, axis=1)[:, None] 
 plt.imshow(irf_conv_matrix)
 plt.show()
 #%%
 # what does irf convolution look like?
-conv_res = irf_conv_matrix @ fine_grid_mu_ref
 plt.plot(fine_grid_energy_ref, fine_grid_mu_ref)
+conv_res = irf_conv_matrix @ fine_grid_mu_ref
 plt.plot(energy_roi, conv_res)
 plt.show()
-plt.clf()
+
 
 gauss_conv_matrix = gaussian_matrix(fine_grid_energy_ref, energy_roi, 1)
 conv_res1 = gauss_conv_matrix @ fine_grid_mu_ref 
-plt.plot(fine_grid_energy_ref, fine_grid_mu_ref)
 plt.plot(energy_roi, conv_res1)
 plt.show()
-plt.clf()
 
+#%%
 plt.plot(irf_conv_matrix[5])
 plt.plot(gauss_conv_matrix[5])
 plt.show()
