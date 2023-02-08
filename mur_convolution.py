@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
-from lmfit import Parameters, minimize
+from lmfit import Parameters, minimize, fit_report
 
 #%%
 # stolen from xas repo
@@ -23,7 +23,7 @@ def compute_shift_between_spectra(energy, mu, energy_ref, mu_ref, e0=8333, de=50
         e_shift = pars.valuesdict()['e_shift']
         x = np.interp(energy_ref_roi, energy - e_shift, mu)
         basis = np.vstack((np.ones(x.shape), x, energy_ref_roi, energy_ref_roi**2, energy_ref_roi**3)).T
-        c, _, _, _ = np.linalg.lstsq(basis, mu_ref_roi)
+        c, _, _, _ = np.linalg.lstsq(basis, mu_ref_roi, rcond=-1)
         return basis @ c
 
     def residuals(pars):
@@ -60,14 +60,12 @@ def get_df_with_mus(uid_idx):
     return test_df
 
 df1 = get_df_with_mus(5000)
-df2 = get_df_with_mus(-1000)
+df2 = get_df_with_mus(-500)
+plt.plot(df1.energy, df1.mur)
+plt.plot(df2.energy, df2.mur)
 
 #%%
 # e_shift, _, _ = compute_shift_between_spectra(df2.energy, df2.mur, df1.energy, df1.mur)
-
-
-plt.plot(df1.energy, df1.mur)
-plt.plot(df2.energy, df2.mur)
 
 # interpolate high energy res for convolution
 cs1 = CubicSpline(df1.energy, df1.mur)
@@ -133,13 +131,14 @@ def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333
     def residuals(pars):
         return get_mu_fit(pars) - mu_roi
     
+    shift_guess = compute_shift_between_spectra(energy_ref, mu_ref, energy, mu)[0]
     pars = Parameters()
     pars.add("sigma", value=0.01, min=0)
-    pars.add("shift", value=0)
+    pars.add("shift", value=shift_guess)
     out = minimize(residuals, pars)
     sigma = out.params["sigma"].value
     shift = out.params["shift"].value
-    print(out.message)
+    print(fit_report(out))
     return shift, sigma, energy_roi, get_mu_fit(pars)
     
 shift, sigma, energy_fit, mu_fit = compute_energy_offset_and_broadening(df2.energy, df2.mur, df1.energy, df1.mur)
