@@ -14,15 +14,17 @@ from lmfit import Parameters, minimize, fit_report
 
 #%%
 # stolen from xas repo
-def compute_shift_between_spectra(energy, mu, energy_ref, mu_ref, e0=8333, de=50):
+def compute_shift_between_spectra_alt(energy, mu, energy_ref, mu_ref, e0=8333, de=50):
     roi_mask = (energy_ref > (e0 - de / 2)) & (energy_ref < (e0 + de / 2))
     energy_ref_roi = energy_ref[roi_mask]
     mu_ref_roi = mu_ref[roi_mask]
     
+    energy_ref_roi_norm = (energy_ref_roi - energy_ref_roi.min()) / (energy_ref_roi.max() - energy_ref_roi.min())
+    
     def interpolated_spectrum(pars):
         e_shift = pars.valuesdict()['e_shift']
         x = np.interp(energy_ref_roi, energy - e_shift, mu)
-        basis = np.vstack((np.ones(x.shape), x, energy_ref_roi, energy_ref_roi**2, energy_ref_roi**3)).T
+        basis = np.vstack((np.ones(x.shape), x, energy_ref_roi_norm, energy_ref_roi_norm**2, energy_ref_roi_norm**3)).T
         c, _, _, _ = np.linalg.lstsq(basis, mu_ref_roi, rcond=-1)
         return basis @ c
 
@@ -60,7 +62,7 @@ def get_df_with_mus(uid_idx):
     return test_df
 
 df1 = get_df_with_mus(5000)
-df2 = get_df_with_mus(-500)
+df2 = get_df_with_mus(5000)
 plt.plot(df1.energy, df1.mur)
 plt.plot(df2.energy, df2.mur)
 
@@ -99,11 +101,15 @@ def conv_spectrum(energy_in, energy_out, mu_in, sigma):
     return conv_matrix @ mu_in
 
 
-def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333, de=50):
+def add_energy_points(energy_arr, sigma):
+    five_sigma = sigma * np.arange(-5, 6)
+    res_arr = (five_sigma[None, :] + energy_arr[:, None]).ravel()
+    return res_arr[5:-5]
+
+
+def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333, de=200):
     
     cs = CubicSpline(energy_ref, mu_ref)
-    # fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), 0.005)
-    # fine_grid_mu_ref = cs(fine_grid_energy_ref)
     
     roi_mask = (energy > (e0 - de / 2)) & (energy < (e0 + de / 2))
     energy_roi = energy[roi_mask]
@@ -114,16 +120,18 @@ def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333
     def get_mu_fit(pars):
         shift = pars.valuesdict()['shift']
         sigma = pars.valuesdict()['sigma']
-        fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), sigma/10)
+        if sigma > 0.02:
+            fine_grid_energy_ref = np.arange(energy_ref.min(), energy_ref.max(), sigma/10)
+        else:
+            fine_grid_energy_ref = add_energy_points(energy_ref, sigma)
         fine_grid_mu_ref = cs(fine_grid_energy_ref)
         # print(sigma)
         mu_ref_conv = conv_spectrum(
             fine_grid_energy_ref - shift, energy_roi, fine_grid_mu_ref, sigma=sigma
             )
-        # plt.plot(energy_roi, mu_ref_conv, c='r', ls='dashed')
         
         basis = np.vstack(
-            (mu_ref_conv, np.ones(energy_roi.shape), energy_roi_norm, energy_roi_norm**2)
+            (mu_ref_conv, np.ones(energy_roi.shape), energy_roi_norm)
             ).T
         c, _, _, _ = np.linalg.lstsq(basis, mu_roi, rcond=-1)
         return basis @ c
@@ -131,7 +139,8 @@ def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333
     def residuals(pars):
         return get_mu_fit(pars) - mu_roi
     
-    shift_guess = compute_shift_between_spectra(energy_ref, mu_ref, energy, mu)[0]
+    shift_guess = compute_shift_between_spectra_alt(energy_ref, mu_ref, energy, mu, e0=e0, de=de)[0]
+    print(shift_guess)
     pars = Parameters()
     pars.add("sigma", value=0.01, min=0)
     pars.add("shift", value=shift_guess)
@@ -140,17 +149,13 @@ def compute_energy_offset_and_broadening(energy, mu, energy_ref, mu_ref, e0=8333
     shift = out.params["shift"].value
     print(fit_report(out))
     return shift, sigma, energy_roi, get_mu_fit(pars)
-    
+
 shift, sigma, energy_fit, mu_fit = compute_energy_offset_and_broadening(df2.energy, df2.mur, df1.energy, df1.mur)
 plt.xlim(energy_fit.min(), energy_fit.max())
-plt.plot(df1.energy, df1.mur, label="mu_ref")
+# plt.plot(df1.energy, df1.mur, label="mu_ref")
 plt.plot(df2.energy, df2.mur, label="mu_target")
 plt.plot(energy_fit, mu_fit, label="mu_fit")
 plt.legend()
-plt.show()
-#%%
-plt.plot(df2.energy, df2.mur)
-plt.plot(energy_fit, mu_fit)
 plt.show()
 #%%
 # testing conv_spectrum
